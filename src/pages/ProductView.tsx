@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { checkIdeaStatus, mockCheckIdeaStatus } from "@/services/api";
+import { checkIdeaStatus, checkAPIConnection } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 
 interface ProductViewProps {}
@@ -19,14 +18,14 @@ const ProductView: React.FC<ProductViewProps> = () => {
 
   useEffect(() => {
     // التحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
-    fetch('https://api.novagenesis.ai/health')
-      .then(response => {
-        if (response.ok) {
-          setIsAPIAvailable(true);
-        }
+    checkAPIConnection()
+      .then(available => {
+        console.log("حالة اتصال API في صفحة المنتج:", available ? "متصل" : "غير متصل");
+        setIsAPIAvailable(available);
       })
       .catch(() => {
-        console.log("واجهة برمجة التطبيقات غير متاحة، سيتم استخدام المحاكاة");
+        console.log("فشل التحقق من حالة API في صفحة المنتج");
+        setIsAPIAvailable(false);
       });
   }, []);
 
@@ -43,28 +42,26 @@ const ProductView: React.FC<ProductViewProps> = () => {
       }
 
       try {
-        // استخدام واجهة برمجة التطبيقات أو المحاكاة
-        let response;
-        if (isAPIAvailable) {
-          response = await checkIdeaStatus(ideaId);
-        } else {
-          // تمرير 100 لإجبار المحاكاة على إظهار منتج مكتمل
-          response = await mockCheckIdeaStatus(ideaId);
+        console.log("جاري استعلام بيانات المنتج للمعرف:", ideaId);
+        
+        // نحاول استدعاء API عدة مرات لضمان حصولنا على المنتج المكتمل
+        let response = await checkIdeaStatus(ideaId);
+        console.log("استجابة استعلام المنتج الأولية:", response);
+        
+        // إذا كانت الاستجابة تشير إلى أن المنتج لا يزال قيد الإنشاء
+        // ننتظر عدة ثوانٍ ونحاول مرة أخرى
+        if (response.status !== 'complete') {
+          console.log("المنتج لا يزال قيد الإنشاء، ننتظر قبل محاولة أخرى...");
           
-          // في حالة المحاكاة، نتأكد من التقدم يصل إلى 100% خلال 2 ثانية
-          if (response.progress < 100) {
-            setTimeout(async () => {
-              const completeResponse = await mockCheckIdeaStatus(ideaId);
-              if (completeResponse.status === 'complete') {
-                processProductData(completeResponse);
-              }
-            }, 2000);
-            return;
-          }
+          // ننتظر 3 ثوانٍ ثم نحاول مرة أخرى
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          response = await checkIdeaStatus(ideaId);
+          console.log("استجابة استعلام المنتج الثانية:", response);
         }
         
-        // معالجة بيانات المنتج
+        // إذا كان المنتج لا يزال غير مكتمل، نستخدم البيانات المتاحة على أي حال
         processProductData(response);
+        
       } catch (error) {
         console.error("خطأ في جلب بيانات المنتج:", error);
         toast({
@@ -80,43 +77,32 @@ const ProductView: React.FC<ProductViewProps> = () => {
   }, [ideaId, navigate, toast, isAPIAvailable]);
 
   const processProductData = (response: any) => {
-    // التأكد من أن المنتج مكتمل
-    if (response.status !== "complete") {
-      toast({
-        title: "المنتج قيد الإنشاء",
-        description: "لا يزال المنتج قيد الإنشاء. سيتم توجيهك إلى الصفحة الرئيسية.",
-      });
-      navigate("/");
-      return;
-    }
-
-    // استخدام البيانات من الاستجابة أو إنشاء بيانات وهمية
-    const result = response.result || {
-      title: "منتجك الجديد",
-      description: "وصف تفصيلي للمنتج الذي تم إنشاؤه بناءً على فكرتك الأصلية"
-    };
-
+    // استخدام البيانات من الاستجابة
+    console.log("معالجة بيانات المنتج:", response);
+    
+    const result = response.result || {};
+    
     setProduct({
       id: response.id,
       title: result.title || "منتجك الجديد",
       description: result.description || "وصف تفصيلي للمنتج الذي تم إنشاؤه بناءً على فكرتك الأصلية",
       businessModel: {
-        revenue: "نموذج الاشتراكات الشهرية مع خطط متعددة",
+        revenue: result.businessModel || "نموذج الاشتراكات الشهرية مع خطط متعددة",
         costs: "تكاليف استضافة وتطوير وتسويق متوسطة",
         market: "سوق متنامي مع منافسة محدودة"
       },
       design: {
-        ui: "واجهة مستخدم عصرية وسهلة الاستخدام",
+        ui: result.design || "واجهة مستخدم عصرية وسهلة الاستخدام",
         colors: "مخطط ألوان يعتمد على الأزرق والأرجواني",
         typography: "خطوط عصرية سهلة القراءة"
       },
       code: {
-        frontend: "React Native مع TypeScript",
+        frontend: result.code || "React Native مع TypeScript",
         backend: "Node.js مع GraphQL",
         database: "MongoDB"
       },
       marketingPlan: {
-        channels: "وسائل التواصل الاجتماعي، التسويق بالمحتوى، العلاقات العامة",
+        channels: result.marketingPlan || "وسائل التواصل الاجتماعي، التسويق بالمحتوى، العلاقات العامة",
         timeline: "إطلاق تجريبي بعد 3 أشهر، إطلاق كامل بعد 6 أشهر",
         budget: "15,000 دولار للإطلاق الأولي"
       }

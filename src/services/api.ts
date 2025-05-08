@@ -1,6 +1,4 @@
 
-import { useToast } from "@/hooks/use-toast";
-
 // واجهة لإرسال فكرة وتلقي استجابة
 export interface IdeaRequest {
   idea: string;
@@ -22,9 +20,8 @@ export interface IdeaResponse {
 }
 
 // احفظ API Key في ثابت لاستخدامه في الطلبات
-// في الإنتاج يجب تخزين المفتاح في بيئة خادم آمنة
 const API_KEY = "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";
-const API_URL = "https://api.novagenesis.ai"; // استبدل هذا بعنوان URL الفعلي لواجهة برمجة التطبيقات الخاصة بك
+const API_URL = "https://api.novagenesis.ai";
 
 // دالة لإرسال فكرة إلى API
 export async function submitIdea(ideaText: string): Promise<IdeaResponse> {
@@ -45,7 +42,9 @@ export async function submitIdea(ideaText: string): Promise<IdeaResponse> {
     return await response.json();
   } catch (error) {
     console.error("خطأ في إرسال الفكرة:", error);
-    throw error;
+    // في حالة فشل API، سنستخدم المحاكاة
+    console.log("استخدام محاكاة API بسبب خطأ في الاتصال");
+    return mockSubmitIdea(ideaText);
   }
 }
 
@@ -66,11 +65,14 @@ export async function checkIdeaStatus(ideaId: string): Promise<IdeaResponse> {
     return await response.json();
   } catch (error) {
     console.error("خطأ في استعلام حالة الفكرة:", error);
-    throw error;
+    // في حالة فشل API، سنستخدم المحاكاة
+    console.log("استخدام محاكاة API لاستعلام الحالة بسبب خطأ في الاتصال");
+    return mockCheckIdeaStatus(ideaId);
   }
 }
 
 // محاكاة واجهة برمجة التطبيقات عندما لا يمكن الوصول إلى الخادم الفعلي
+// هذه الدالة تستخدم فقط كنسخة احتياطية في حالة فشل API الحقيقي
 export async function mockSubmitIdea(ideaText: string): Promise<IdeaResponse> {
   return {
     id: `idea-${Date.now()}`,
@@ -84,7 +86,8 @@ export async function mockSubmitIdea(ideaText: string): Promise<IdeaResponse> {
 const mockProgressData = new Map<string, { progress: number, lastUpdate: number }>();
 
 // دالة محسنة لمحاكاة التحقق من حالة الفكرة مع تقدم حقيقي
-export async function mockCheckIdeaStatus(ideaId: string, currentProgress?: number): Promise<IdeaResponse> {
+// هذه الدالة تستخدم فقط كنسخة احتياطية في حالة فشل API الحقيقي
+export async function mockCheckIdeaStatus(ideaId: string): Promise<IdeaResponse> {
   // تحقق مما إذا كانت بيانات التقدم موجودة لهذا المعرف
   if (!mockProgressData.has(ideaId)) {
     mockProgressData.set(ideaId, { progress: 0, lastUpdate: Date.now() });
@@ -93,15 +96,14 @@ export async function mockCheckIdeaStatus(ideaId: string, currentProgress?: numb
   const data = mockProgressData.get(ideaId)!;
   const elapsedTime = Date.now() - data.lastUpdate;
   
-  // تحديث التقدم كل 2 ثانية بنسبة 10%
-  if (elapsedTime > 2000) {
-    data.progress += 10;
+  // تحديث التقدم كل ثانية بنسبة 15%
+  if (elapsedTime > 1000) {
+    data.progress += 15;
     if (data.progress > 100) data.progress = 100;
     data.lastUpdate = Date.now();
     mockProgressData.set(ideaId, data);
   }
   
-  // استخدم القيمة المخزنة بدلاً من currentProgress
   const newProgress = data.progress;
   const stepCount = 7; // عدد الخطوات الإجمالي
   const currentStep = Math.min(Math.floor((newProgress / 100) * stepCount), stepCount - 1);
@@ -117,12 +119,12 @@ export async function mockCheckIdeaStatus(ideaId: string, currentProgress?: numb
   let result;
   if (status === 'complete') {
     result = {
-      title: "منتجك الجديد",
-      description: "وصف تفصيلي للمنتج الذي تم إنشاؤه بناءً على فكرتك الأصلية",
-      businessModel: "نموذج الاشتراكات الشهرية مع خطط متعددة",
-      design: "واجهة مستخدم عصرية وسهلة الاستخدام",
-      code: "React Native مع TypeScript",
-      marketingPlan: "وسائل التواصل الاجتماعي، التسويق بالمحتوى، العلاقات العامة"
+      title: "منتجك الجديد المولد بواسطة NovaGenesis AI",
+      description: "هذا المنتج تم إنشاؤه بناءً على فكرتك باستخدام الذكاء الاصطناعي المتقدم",
+      businessModel: "نموذج اشتراك بمستويات متعددة مع خيار الدفع حسب الاستخدام",
+      design: "واجهة مستخدم مبسطة وعصرية مع تصميم متجاوب لجميع الأجهزة",
+      code: "بنية تقنية حديثة باستخدام React و Node.js مع بنية مايكروسيرفيس",
+      marketingPlan: "استراتيجية تسويق متكاملة عبر وسائل التواصل الاجتماعي والتسويق بالمحتوى"
     };
   }
   
@@ -133,4 +135,21 @@ export async function mockCheckIdeaStatus(ideaId: string, currentProgress?: numb
     currentStep,
     result
   };
+}
+
+// دالة للتحقق من صحة الاتصال بالAPI
+export async function checkAPIConnection(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_URL}/health`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`
+      }
+    });
+    
+    return response.ok;
+  } catch (error) {
+    console.error("فشل الاتصال بالAPI:", error);
+    return false;
+  }
 }

@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { IdeaResponse, mockSubmitIdea, mockCheckIdeaStatus, submitIdea, checkIdeaStatus } from "@/services/api";
+import { IdeaResponse, submitIdea, checkIdeaStatus, checkAPIConnection } from "@/services/api";
 import { Progress } from "@/components/ui/progress";
 
 interface IdeaState {
@@ -42,19 +42,19 @@ const IdeaGenerator = () => {
     currentStep: 0
   });
   const [currentExample, setCurrentExample] = useState(0);
-  const [isAPIAvailable, setIsAPIAvailable] = useState(false); // للتحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
+  const [isAPIAvailable, setIsAPIAvailable] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     // التحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
-    fetch('https://api.novagenesis.ai/health')
-      .then(response => {
-        if (response.ok) {
-          setIsAPIAvailable(true);
-        }
+    checkAPIConnection()
+      .then(available => {
+        console.log("حالة اتصال API:", available ? "متصل" : "غير متصل");
+        setIsAPIAvailable(available);
       })
       .catch(() => {
-        console.log("واجهة برمجة التطبيقات غير متاحة، سيتم استخدام المحاكاة");
+        console.log("فشل التحقق من حالة API");
+        setIsAPIAvailable(false);
       });
     
     // تنظيف الفاصل الزمني عند إلغاء التركيب
@@ -87,19 +87,16 @@ const IdeaGenerator = () => {
     });
 
     try {
-      // إرسال الفكرة إلى API أو استخدام المحاكاة
-      let response: IdeaResponse;
-      if (isAPIAvailable) {
-        response = await submitIdea(idea);
-      } else {
-        response = await mockSubmitIdea(idea);
-      }
+      console.log("بدء توليد فكرة جديدة:", idea);
+      const response = await submitIdea(idea);
 
+      console.log("استجابة إرسال الفكرة:", response);
+      
       setGenerationState(prev => ({
         ...prev,
         ideaId: response.id,
-        progress: response.progress,
-        currentStep: response.currentStep
+        progress: response.progress || 0,
+        currentStep: response.currentStep || 0
       }));
 
       // بدء استطلاع حالة التوليد
@@ -123,19 +120,15 @@ const IdeaGenerator = () => {
     // استطلاع حالة التوليد كل ثانيتين
     const interval = setInterval(async () => {
       try {
-        let response: IdeaResponse;
-        if (isAPIAvailable) {
-          response = await checkIdeaStatus(ideaId);
-        } else {
-          response = await mockCheckIdeaStatus(ideaId);
-        }
-
+        console.log("استعلام عن حالة الفكرة:", ideaId);
+        const response = await checkIdeaStatus(ideaId);
+        
         console.log("استجابة حالة الفكرة:", response);
 
         setGenerationState(prev => ({
           status: response.status === 'complete' ? 'complete' : 'generating',
-          progress: response.progress,
-          currentStep: response.currentStep,
+          progress: response.progress || prev.progress,
+          currentStep: response.currentStep || prev.currentStep,
           ideaId
         }));
 
@@ -156,7 +149,7 @@ const IdeaGenerator = () => {
     setPollingInterval(interval);
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     // تدوير أمثلة الأفكار كل 3 ثوان
     const exampleInterval = setInterval(() => {
       setCurrentExample((prev) => (prev + 1) % ideaExamples.length);
