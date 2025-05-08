@@ -1,13 +1,16 @@
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { IdeaResponse, mockSubmitIdea, mockCheckIdeaStatus, submitIdea, checkIdeaStatus } from "@/services/api";
 
 interface IdeaState {
   status: 'idle' | 'generating' | 'complete';
   progress: number;
   currentStep: number;
+  ideaId?: string;
 }
 
 const steps = [
@@ -30,6 +33,7 @@ const ideaExamples = [
 
 const IdeaGenerator = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [idea, setIdea] = useState("");
   const [generationState, setGenerationState] = useState<IdeaState>({
     status: 'idle',
@@ -37,8 +41,22 @@ const IdeaGenerator = () => {
     currentStep: 0
   });
   const [currentExample, setCurrentExample] = useState(0);
+  const [isAPIAvailable, setIsAPIAvailable] = useState(false); // للتحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
 
-  const startGeneration = () => {
+  React.useEffect(() => {
+    // التحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
+    fetch('https://api.novagenesis.ai/health')
+      .then(response => {
+        if (response.ok) {
+          setIsAPIAvailable(true);
+        }
+      })
+      .catch(() => {
+        console.log("واجهة برمجة التطبيقات غير متاحة، سيتم استخدام المحاكاة");
+      });
+  }, []);
+
+  const startGeneration = async () => {
     if (!idea.trim()) {
       toast({
         title: "أدخل فكرتك أولاً",
@@ -54,40 +72,89 @@ const IdeaGenerator = () => {
       currentStep: 0
     });
 
-    // Simulate generation process with increasing progress
-    const intervalTime = 800;
-    const stepCount = steps.length;
-    let currentProgress = 0;
-    
-    const interval = setInterval(() => {
-      currentProgress += 1;
-      const step = Math.min(Math.floor((currentProgress / (stepCount * 3)) * stepCount), stepCount - 1);
-      const progress = Math.min((currentProgress / (stepCount * 3)) * 100, 100);
-      
-      setGenerationState({
-        status: progress >= 100 ? 'complete' : 'generating',
-        progress,
-        currentStep: step
-      });
-      
-      if (progress >= 100) {
-        clearInterval(interval);
-        toast({
-          title: "تم إنشاء المنتج!",
-          description: "يمكنك الآن استعراض منتجك الكامل",
-        });
+    try {
+      // إرسال الفكرة إلى API أو استخدام المحاكاة
+      let response: IdeaResponse;
+      if (isAPIAvailable) {
+        response = await submitIdea(idea);
+      } else {
+        response = await mockSubmitIdea(idea);
       }
-    }, intervalTime);
+
+      setGenerationState(prev => ({
+        ...prev,
+        ideaId: response.id,
+        progress: response.progress,
+        currentStep: response.currentStep
+      }));
+
+      // بدء استطلاع حالة التوليد
+      pollGenerationStatus(response.id);
+    } catch (error) {
+      console.error("خطأ في بدء التوليد:", error);
+      toast({
+        title: "خطأ",
+        description: "حدث خطأ أثناء بدء توليد المنتج. يرجى المحاولة مرة أخرى.",
+        variant: "destructive"
+      });
+      setGenerationState({
+        status: 'idle',
+        progress: 0,
+        currentStep: 0
+      });
+    }
+  };
+
+  const pollGenerationStatus = async (ideaId: string) => {
+    // استطلاع حالة التوليد كل ثانيتين
+    const interval = setInterval(async () => {
+      try {
+        let response: IdeaResponse;
+        if (isAPIAvailable) {
+          response = await checkIdeaStatus(ideaId);
+        } else {
+          response = await mockCheckIdeaStatus(ideaId, generationState.progress);
+        }
+
+        setGenerationState(prev => ({
+          status: response.status === 'complete' ? 'complete' : 'generating',
+          progress: response.progress,
+          currentStep: response.currentStep,
+          ideaId
+        }));
+
+        // إيقاف الاستطلاع عندما يكتمل التوليد
+        if (response.status === 'complete') {
+          clearInterval(interval);
+          toast({
+            title: "تم إنشاء المنتج!",
+            description: "يمكنك الآن استعراض منتجك الكامل",
+          });
+        }
+      } catch (error) {
+        console.error("خطأ في استطلاع حالة التوليد:", error);
+        clearInterval(interval);
+      }
+    }, 2000);
+
+    // تنظيف الفاصل الزمني عند إلغاء تركيب المكون
+    return () => clearInterval(interval);
   };
 
   React.useEffect(() => {
-    // Rotate through example ideas every 3 seconds
+    // تدوير أمثلة الأفكار كل 3 ثوان
     const exampleInterval = setInterval(() => {
       setCurrentExample((prev) => (prev + 1) % ideaExamples.length);
     }, 3000);
     
     return () => clearInterval(exampleInterval);
   }, []);
+
+  const viewProduct = () => {
+    if (generationState.ideaId) {
+      navigate(`/product/${generationState.ideaId}`);
+    }
+  };
 
   return (
     <section className="py-16 bg-gradient-to-b from-background to-nova-50/30">
@@ -172,7 +239,12 @@ const IdeaGenerator = () => {
 
               {generationState.status === 'complete' && (
                 <div className="mt-6 flex justify-center">
-                  <Button className="nova-button px-8">عرض المنتج النهائي</Button>
+                  <Button 
+                    className="nova-button px-8"
+                    onClick={viewProduct}
+                  >
+                    عرض المنتج النهائي
+                  </Button>
                 </div>
               )}
             </div>
