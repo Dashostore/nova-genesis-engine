@@ -96,9 +96,16 @@
     @apply relative inline-flex items-center justify-center px-6 py-3 overflow-hidden font-bold text-white rounded-md shadow-md bg-nova-gradient hover:scale-105 transition-transform duration-200;
   }
 
-  /* Define .nova-button as a group separately */
+  /* Define .nova-button as a group but without using @apply */
   .nova-button {
-    @apply group;
+    @apply relative;
+  }
+  /* Using the group class directly without @apply */
+  .nova-button {
+    position: relative;
+  }
+  .nova-button.group {
+    /* This is just a placeholder to avoid errors */
   }
 
   .nova-button::before {
