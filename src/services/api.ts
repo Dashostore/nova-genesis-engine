@@ -80,9 +80,29 @@ export async function mockSubmitIdea(ideaText: string): Promise<IdeaResponse> {
   };
 }
 
-export async function mockCheckIdeaStatus(ideaId: string, currentProgress: number): Promise<IdeaResponse> {
-  // تقدم المحاكاة بنسبة 10٪ في كل مرة
-  const newProgress = Math.min(currentProgress + 10, 100);
+// تخزين متغير لتتبع آخر وقت تم فيه استدعاء mockCheckIdeaStatus
+const mockProgressData = new Map<string, { progress: number, lastUpdate: number }>();
+
+// دالة محسنة لمحاكاة التحقق من حالة الفكرة مع تقدم حقيقي
+export async function mockCheckIdeaStatus(ideaId: string, currentProgress?: number): Promise<IdeaResponse> {
+  // تحقق مما إذا كانت بيانات التقدم موجودة لهذا المعرف
+  if (!mockProgressData.has(ideaId)) {
+    mockProgressData.set(ideaId, { progress: 0, lastUpdate: Date.now() });
+  }
+
+  const data = mockProgressData.get(ideaId)!;
+  const elapsedTime = Date.now() - data.lastUpdate;
+  
+  // تحديث التقدم كل 2 ثانية بنسبة 10%
+  if (elapsedTime > 2000) {
+    data.progress += 10;
+    if (data.progress > 100) data.progress = 100;
+    data.lastUpdate = Date.now();
+    mockProgressData.set(ideaId, data);
+  }
+  
+  // استخدم القيمة المخزنة بدلاً من currentProgress
+  const newProgress = data.progress;
   const stepCount = 7; // عدد الخطوات الإجمالي
   const currentStep = Math.min(Math.floor((newProgress / 100) * stepCount), stepCount - 1);
   
@@ -93,10 +113,24 @@ export async function mockCheckIdeaStatus(ideaId: string, currentProgress: numbe
     status = 'generating';
   }
   
+  // إضافة نتيجة عند اكتمال التوليد
+  let result;
+  if (status === 'complete') {
+    result = {
+      title: "منتجك الجديد",
+      description: "وصف تفصيلي للمنتج الذي تم إنشاؤه بناءً على فكرتك الأصلية",
+      businessModel: "نموذج الاشتراكات الشهرية مع خطط متعددة",
+      design: "واجهة مستخدم عصرية وسهلة الاستخدام",
+      code: "React Native مع TypeScript",
+      marketingPlan: "وسائل التواصل الاجتماعي، التسويق بالمحتوى، العلاقات العامة"
+    };
+  }
+  
   return {
     id: ideaId,
     status,
     progress: newProgress,
-    currentStep
+    currentStep,
+    result
   };
 }

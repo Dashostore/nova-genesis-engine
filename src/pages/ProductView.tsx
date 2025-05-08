@@ -15,6 +15,20 @@ const ProductView: React.FC<ProductViewProps> = () => {
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [isAPIAvailable, setIsAPIAvailable] = useState(false);
+
+  useEffect(() => {
+    // التحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
+    fetch('https://api.novagenesis.ai/health')
+      .then(response => {
+        if (response.ok) {
+          setIsAPIAvailable(true);
+        }
+      })
+      .catch(() => {
+        console.log("واجهة برمجة التطبيقات غير متاحة، سيتم استخدام المحاكاة");
+      });
+  }, []);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -30,46 +44,27 @@ const ProductView: React.FC<ProductViewProps> = () => {
 
       try {
         // استخدام واجهة برمجة التطبيقات أو المحاكاة
-        const response = await mockCheckIdeaStatus(ideaId, 100);
-        
-        // التأكد من أن المنتج مكتمل
-        if (response.status !== "complete") {
-          toast({
-            title: "المنتج قيد الإنشاء",
-            description: "لا يزال المنتج قيد الإنشاء. سيتم توجيهك إلى الصفحة الرئيسية.",
-          });
-          navigate("/");
-          return;
-        }
-
-        // بيانات وهمية للعرض
-        setProduct({
-          id: response.id,
-          title: "منتجك الجديد",
-          description: "وصف تفصيلي للمنتج الذي تم إنشاؤه بناءً على فكرتك الأصلية",
-          businessModel: {
-            revenue: "نموذج الاشتراكات الشهرية مع خطط متعددة",
-            costs: "تكاليف استضافة وتطوير وتسويق متوسطة",
-            market: "سوق متنامي مع منافسة محدودة"
-          },
-          design: {
-            ui: "واجهة مستخدم عصرية وسهلة الاستخدام",
-            colors: "مخطط ألوان يعتمد على الأزرق والأرجواني",
-            typography: "خطوط عصرية سهلة القراءة"
-          },
-          code: {
-            frontend: "React Native مع TypeScript",
-            backend: "Node.js مع GraphQL",
-            database: "MongoDB"
-          },
-          marketingPlan: {
-            channels: "وسائل التواصل الاجتماعي، التسويق بالمحتوى، العلاقات العامة",
-            timeline: "إطلاق تجريبي بعد 3 أشهر، إطلاق كامل بعد 6 أشهر",
-            budget: "15,000 دولار للإطلاق الأولي"
+        let response;
+        if (isAPIAvailable) {
+          response = await checkIdeaStatus(ideaId);
+        } else {
+          // تمرير 100 لإجبار المحاكاة على إظهار منتج مكتمل
+          response = await mockCheckIdeaStatus(ideaId);
+          
+          // في حالة المحاكاة، نتأكد من التقدم يصل إلى 100% خلال 2 ثانية
+          if (response.progress < 100) {
+            setTimeout(async () => {
+              const completeResponse = await mockCheckIdeaStatus(ideaId);
+              if (completeResponse.status === 'complete') {
+                processProductData(completeResponse);
+              }
+            }, 2000);
+            return;
           }
-        });
+        }
         
-        setLoading(false);
+        // معالجة بيانات المنتج
+        processProductData(response);
       } catch (error) {
         console.error("خطأ في جلب بيانات المنتج:", error);
         toast({
@@ -82,7 +77,53 @@ const ProductView: React.FC<ProductViewProps> = () => {
     };
 
     fetchProduct();
-  }, [ideaId, navigate, toast]);
+  }, [ideaId, navigate, toast, isAPIAvailable]);
+
+  const processProductData = (response: any) => {
+    // التأكد من أن المنتج مكتمل
+    if (response.status !== "complete") {
+      toast({
+        title: "المنتج قيد الإنشاء",
+        description: "لا يزال المنتج قيد الإنشاء. سيتم توجيهك إلى الصفحة الرئيسية.",
+      });
+      navigate("/");
+      return;
+    }
+
+    // استخدام البيانات من الاستجابة أو إنشاء بيانات وهمية
+    const result = response.result || {
+      title: "منتجك الجديد",
+      description: "وصف تفصيلي للمنتج الذي تم إنشاؤه بناءً على فكرتك الأصلية"
+    };
+
+    setProduct({
+      id: response.id,
+      title: result.title || "منتجك الجديد",
+      description: result.description || "وصف تفصيلي للمنتج الذي تم إنشاؤه بناءً على فكرتك الأصلية",
+      businessModel: {
+        revenue: "نموذج الاشتراكات الشهرية مع خطط متعددة",
+        costs: "تكاليف استضافة وتطوير وتسويق متوسطة",
+        market: "سوق متنامي مع منافسة محدودة"
+      },
+      design: {
+        ui: "واجهة مستخدم عصرية وسهلة الاستخدام",
+        colors: "مخطط ألوان يعتمد على الأزرق والأرجواني",
+        typography: "خطوط عصرية سهلة القراءة"
+      },
+      code: {
+        frontend: "React Native مع TypeScript",
+        backend: "Node.js مع GraphQL",
+        database: "MongoDB"
+      },
+      marketingPlan: {
+        channels: "وسائل التواصل الاجتماعي، التسويق بالمحتوى، العلاقات العامة",
+        timeline: "إطلاق تجريبي بعد 3 أشهر، إطلاق كامل بعد 6 أشهر",
+        budget: "15,000 دولار للإطلاق الأولي"
+      }
+    });
+    
+    setLoading(false);
+  };
 
   if (loading) {
     return (

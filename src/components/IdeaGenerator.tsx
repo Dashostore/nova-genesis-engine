@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { IdeaResponse, mockSubmitIdea, mockCheckIdeaStatus, submitIdea, checkIdeaStatus } from "@/services/api";
+import { Progress } from "@/components/ui/progress";
 
 interface IdeaState {
   status: 'idle' | 'generating' | 'complete';
@@ -42,6 +43,7 @@ const IdeaGenerator = () => {
   });
   const [currentExample, setCurrentExample] = useState(0);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false); // للتحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   React.useEffect(() => {
     // التحقق مما إذا كانت واجهة برمجة التطبيقات متاحة
@@ -54,6 +56,13 @@ const IdeaGenerator = () => {
       .catch(() => {
         console.log("واجهة برمجة التطبيقات غير متاحة، سيتم استخدام المحاكاة");
       });
+    
+    // تنظيف الفاصل الزمني عند إلغاء التركيب
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
   }, []);
 
   const startGeneration = async () => {
@@ -64,6 +73,11 @@ const IdeaGenerator = () => {
         variant: "destructive"
       });
       return;
+    }
+
+    // إيقاف أي استطلاع سابق
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
     }
 
     setGenerationState({
@@ -113,8 +127,10 @@ const IdeaGenerator = () => {
         if (isAPIAvailable) {
           response = await checkIdeaStatus(ideaId);
         } else {
-          response = await mockCheckIdeaStatus(ideaId, generationState.progress);
+          response = await mockCheckIdeaStatus(ideaId);
         }
+
+        console.log("استجابة حالة الفكرة:", response);
 
         setGenerationState(prev => ({
           status: response.status === 'complete' ? 'complete' : 'generating',
@@ -137,8 +153,7 @@ const IdeaGenerator = () => {
       }
     }, 2000);
 
-    // تنظيف الفاصل الزمني عند إلغاء تركيب المكون
-    return () => clearInterval(interval);
+    setPollingInterval(interval);
   };
 
   React.useEffect(() => {
@@ -208,12 +223,10 @@ const IdeaGenerator = () => {
                 <span className="text-sm text-gray-500">{Math.round(generationState.progress)}%</span>
               </div>
               
-              <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full mb-6 overflow-hidden">
-                <div 
-                  className="h-full bg-nova-gradient rounded-full transition-all duration-500"
-                  style={{ width: `${generationState.progress}%` }}
-                ></div>
-              </div>
+              <Progress
+                value={generationState.progress}
+                className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full mb-6"
+              />
               
               <ul className="space-y-4">
                 {steps.map((step, index) => (
